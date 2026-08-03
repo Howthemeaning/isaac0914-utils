@@ -1,4 +1,4 @@
-module github.com/isaac0914/utils
+module github.com/Howthemeaning/isaac0914-utils
 
 go 1.24.0
 

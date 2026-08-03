@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/isaac0914/utils/zenserver/ginx"
+	"github.com/Howthemeaning/isaac0914-utils/zenserver/ginx"
 )
 
 // GinHandler 提供 GET /activityLog 的处理函数，解析 query 参数走 ginx 响应壳。

@@ -3,7 +3,7 @@
 Isaac 的个人工具库。
 
 ```
-go get github.com/isaac0914/utils
+go get github.com/Howthemeaning/isaac0914-utils
 ```
 
 | 目录 | 内容 |
@@ -16,7 +16,7 @@ go get github.com/isaac0914/utils
 ## zenserver
 
 把每次新建 server 都要重写一遍的那层骨架抽出来。设计文档见
-[doc/zenserver/design.md](doc/zenserver/design.md)。
+[zenserver/docs/design.md](zenserver/docs/design.md)。
 
 不包含数据库、定时任务、Prometheus、gRPC——这些最依赖具体部署环境，等有第二个真实
 server 落地、看清哪些是真共性再抽。
@@ -30,10 +30,10 @@ import (
     "context"
     "log"
 
-    "github.com/isaac0914/utils/zenserver"
-    "github.com/isaac0914/utils/zenserver/config"
-    "github.com/isaac0914/utils/zenserver/ginx"
-    "github.com/isaac0914/utils/zenserver/logx"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver/config"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver/ginx"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver/logx"
     "github.com/gin-gonic/gin"
 )
 
@@ -171,7 +171,7 @@ ginx.InternalError(c, err)
 ## zenpage
 
 列表分页的三段活：取参校验、算 `LIMIT/OFFSET`、拼响应。设计文档见
-[doc/zenpage/design.md](doc/zenpage/design.md)。
+[zenpage/docs/design.md](zenpage/docs/design.md)。
 
 **零依赖**——`Parse` 收字符串、`Result` 是纯结构体，不认识 gin 也不认识数据库。
 

@@ -3,7 +3,7 @@ package zenalog
 import (
 	"context"
 
-	"github.com/isaac0914/utils/zenserver/ginx"
+	"github.com/Howthemeaning/isaac0914-utils/zenserver/ginx"
 )
 
 // 私有类型做 context key，避免与其他包冲突

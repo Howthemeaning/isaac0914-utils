@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/isaac0914/utils/zenalog/es"
+	"github.com/Howthemeaning/isaac0914-utils/zenalog/es"
 )
 
 // 查询默认值与上限

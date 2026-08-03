@@ -2,7 +2,7 @@
 
 - 日期：2026-08-03
 - 状态：已定稿
-- 模块路径：`github.com/isaac0914/utils/zenpage`
+- 模块路径：`github.com/Howthemeaning/isaac0914-utils/zenpage`
 
 ## 1. 背景与目标
 

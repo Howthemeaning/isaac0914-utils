@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/isaac0914/utils/zenalog/es"
+	"github.com/Howthemeaning/isaac0914-utils/zenalog/es"
 )
 
 func init() {

@@ -2,7 +2,7 @@
 
 - 日期：2026-07-31（v2.4 修订）
 - 状态：修订中——已纳入 CMI 四轮评审反馈与 zrbiz/ES 6.8 源码级复核，待定稿
-- 模块路径：`github.com/isaac0914/utils/zenalog`
+- 模块路径：`github.com/Howthemeaning/isaac0914-utils/zenalog`
 
 ## 1. 背景与目标
 

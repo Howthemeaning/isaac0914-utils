@@ -34,7 +34,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/isaac0914/utils/zenserver/ginx"
+	"github.com/Howthemeaning/isaac0914-utils/zenserver/ginx"
 )
 
 // defaultShutdownTimeout 优雅退出的默认等待上限

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaac0914/utils/zenalog/es"
+	"github.com/Howthemeaning/isaac0914-utils/zenalog/es"
 )
 
 // fakeSearcher 记录最后一次查询请求与 ctx，返回预置结果

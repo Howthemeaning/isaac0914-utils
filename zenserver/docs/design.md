@@ -2,7 +2,7 @@
 
 - 日期：2026-07-30
 - 状态：已定稿
-- 模块路径：`github.com/isaac0914/utils/zenserver`
+- 模块路径：`github.com/Howthemeaning/isaac0914-utils/zenserver`
 
 ## 1. 背景与目标
 
@@ -124,10 +124,10 @@ package main
 import (
     "log"
 
-    "github.com/isaac0914/utils/zenserver"
-    "github.com/isaac0914/utils/zenserver/config"
-    "github.com/isaac0914/utils/zenserver/ginx"
-    "github.com/isaac0914/utils/zenserver/logx"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver/config"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver/ginx"
+    "github.com/Howthemeaning/isaac0914-utils/zenserver/logx"
 )
 
 type Config struct {

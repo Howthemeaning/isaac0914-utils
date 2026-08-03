@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/isaac0914/utils/zenalog/es"
-	"github.com/isaac0914/utils/zenserver/ginx"
+	"github.com/Howthemeaning/isaac0914-utils/zenalog/es"
+	"github.com/Howthemeaning/isaac0914-utils/zenserver/ginx"
 )
 
 // fakeStore 记录 Bulk 批次；entered/release 用来钉住 flusher 的时序

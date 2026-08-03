@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/isaac0914/utils/zenalog/es"
+	"github.com/Howthemeaning/isaac0914-utils/zenalog/es"
 )
 
 // ErrClosed Logger 已 Close 后再埋点（含 Sync）返回的错误。

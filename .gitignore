@@ -1,0 +1,25 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+
+# Coverage
+*.out
+coverage.*
+
+# Logs
+*.log
+logs/
+
+# IDE / tooling
+.idea/
+.vscode/
+.qoder/
+.codegraph/
+.claude/
+*.swp
+
+# OS
+.DS_Store

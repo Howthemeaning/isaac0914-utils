@@ -7,7 +7,8 @@
 //	slog.InfoContext(ctx, "server started")   // 自动带上 request id
 //
 // dev 模式输出纯文本到 stdout。prod 模式输出 JSON 并做级别分流：app.log 收 Level
-// 以上的全量日志，error.log 与 stdout 只收 ERROR，容器里方便直接排查。
+// 以上的全量日志，error.log 与 stdout 只收 ERROR，容器里方便直接排查；
+// 开 Console 后 app.log 与 stdout 都收全量（k8s 里 kubectl logs 直接可见）。
 //
 // Init 修改的是 slog 的全局默认 logger，一个进程只应调用一次。
 package logx
@@ -43,6 +44,7 @@ type Config struct {
 	MaxBackups  int    `yaml:"max_backups" env:"LOG_MAX_BACKUPS"`     // 保留个数，0 = 全部保留
 	Compress    bool   `yaml:"compress" env:"LOG_COMPRESS"`           // 轮转后是否压缩
 	SplitByHost bool   `yaml:"split_by_host" env:"LOG_SPLIT_BY_HOST"` // 按 HOSTNAME 建子目录，k8s 多 pod 共享卷时开
+	Console     bool   `yaml:"console" env:"LOG_CONSOLE"`             // prod 下全量日志同时上 stdout，k8s 采集用
 }
 
 // Extractor 从 context 提取要附加到每条日志的字段，无字段时返回 nil。
@@ -101,11 +103,18 @@ func newRotateHandler(cfg Config, level slog.Level) (slog.Handler, error) {
 		}
 	}
 
-	app := slog.NewJSONHandler(rotate("app.log"), &slog.HandlerOptions{Level: level})
-	errs := slog.NewJSONHandler(
-		io.MultiWriter(os.Stdout, rotate("error.log")),
-		&slog.HandlerOptions{Level: slog.LevelError},
-	)
+	appWriter := rotate("app.log")
+	if cfg.Console {
+		appWriter = io.MultiWriter(os.Stdout, appWriter)
+	}
+	app := slog.NewJSONHandler(appWriter, &slog.HandlerOptions{Level: level})
+
+	errsWriter := rotate("error.log")
+	if !cfg.Console {
+		// 默认只把 ERROR 上 stdout；Console 下 app 已全量覆盖，避免重复
+		errsWriter = io.MultiWriter(os.Stdout, errsWriter)
+	}
+	errs := slog.NewJSONHandler(errsWriter, &slog.HandlerOptions{Level: slog.LevelError})
 	return newMultiHandler(app, errs), nil
 }
 

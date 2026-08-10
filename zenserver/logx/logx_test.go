@@ -3,6 +3,7 @@ package logx
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -86,6 +87,52 @@ func TestInitProdLevelSplit(t *testing.T) {
 	if !strings.Contains(errLog, "error line") {
 		t.Error("error.log should contain the error line")
 	}
+}
+
+// Console=true：全量日志（含 info）同时上 stdout，app.log 照常收全量
+func TestInitProdConsoleForwardsAllToStdout(t *testing.T) {
+	dir := t.TempDir()
+	stdout := captureStdout(t, func() {
+		if err := Init(Config{Mode: ModeProd, Level: "info", Dir: dir, Console: true}); err != nil {
+			t.Fatalf("Init: %v", err)
+		}
+		slog.Info("info line")
+		slog.Error("error line")
+	})
+
+	if !strings.Contains(stdout, "info line") {
+		t.Errorf("stdout should contain the info line, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "error line") {
+		t.Errorf("stdout should contain the error line, got: %s", stdout)
+	}
+	if app := readFile(t, filepath.Join(dir, "app.log")); !strings.Contains(app, "info line") {
+		t.Error("app.log should contain the info line even with Console on")
+	}
+	if errLog := readFile(t, filepath.Join(dir, "error.log")); !strings.Contains(errLog, "error line") {
+		t.Error("error.log should contain the error line even with Console on")
+	}
+}
+
+// captureStdout 在 Init 前接管 os.Stdout 收集输出（handler 持有包级变量，换晚了不生效）
+func captureStdout(t *testing.T, run func()) string {
+	t.Helper()
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		done <- buf.String()
+	}()
+	run()
+	_ = w.Close()
+	os.Stdout = orig
+	return <-done
 }
 
 func TestInitProdSplitByHost(t *testing.T) {

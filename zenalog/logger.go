@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,11 +27,14 @@ const (
 // Config zenalog 配置。标量字段支持 env 覆盖，slice 字段不支持
 // （zenserver/config 的 env tag 对 slice 不生效，配了会在加载时报错）。
 type Config struct {
-	Addresses          []string      `yaml:"addresses"`    // ES 节点，必填
-	Index              string        `yaml:"index"`        // 写入索引，必填，约定 {service}-activity-log；必须是具体索引名，不能是 rollover 别名
-	SearchIndex        string        `yaml:"search_index"` // 查询索引 pattern，缺省 = Index；只对 AttrKeys 一致的 zenalog 索引成立
-	Username           string        `yaml:"username" env:"ES_USERNAME"`
-	Password           string        `yaml:"password" env:"ES_PASSWORD"`
+	Addresses   []string `yaml:"addresses"`    // ES 节点，必填
+	Index       string   `yaml:"index"`        // 写入索引，必填，约定 {service}-activity-log；必须是具体索引名，不能是 rollover 别名
+	SearchIndex string   `yaml:"search_index"` // 查询索引 pattern，缺省 = Index；只对 AttrKeys 一致的 zenalog 索引成立
+	Username    string   `yaml:"username" env:"ES_USERNAME"`
+	Password    string   `yaml:"password" env:"ES_PASSWORD"`
+	// AddressesCSV 逗号分隔的 ES 节点，env 通道：env tag 对 slice 不生效，
+	// 标量才能被环境变量覆盖，New 里拆进 Addresses，与 yaml 二选一
+	AddressesCSV       string        `yaml:"-" env:"ES_HOST"`
 	Timeout            time.Duration `yaml:"timeout"`             // ES 请求超时，默认 10s
 	QueueSize          int           `yaml:"queue_size"`          // 写缓冲，默认 1024
 	BatchSize          int           `yaml:"batch_size"`          // bulk 批次，默认 100
@@ -61,6 +65,15 @@ func (c Config) validate() error {
 		errs = append(errs, errors.New("zenalog: config flush_interval must be >= 0"))
 	}
 	return errors.Join(errs...)
+}
+
+// applyAddressesCSV ES_HOST env 通道：逗号分隔拆进 Addresses
+// （env tag 对 slice 不生效，标量才能被环境变量覆盖）
+func (c Config) applyAddressesCSV() Config {
+	if c.AddressesCSV != "" {
+		c.Addresses = strings.Split(c.AddressesCSV, ",")
+	}
+	return c
 }
 
 // withDefaults 零值填默认
@@ -114,6 +127,7 @@ type Logger struct {
 // 与 Index 不同，额外比对目标 pattern 的 _mapping 与本地 AttrKeys，缺键记 warn
 // （不 fail——目标索引可能还没建；缺字段的索引在 attrs 筛选下会被静默排除）。
 func New(cfg Config) (*Logger, error) {
+	cfg = cfg.applyAddressesCSV()
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

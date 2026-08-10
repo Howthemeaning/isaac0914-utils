@@ -97,6 +97,28 @@ func TestNewValidatesConfig(t *testing.T) {
 	}
 }
 
+// ES_HOST env 通道：逗号分隔拆进 Addresses
+func TestApplyAddressesCSV(t *testing.T) {
+	got := (Config{AddressesCSV: "172.16.5.185,172.16.5.217,172.16.5.237"}).applyAddressesCSV()
+	want := []string{"172.16.5.185", "172.16.5.217", "172.16.5.237"}
+	if len(got.Addresses) != len(want) {
+		t.Fatalf("Addresses = %v, want %v", got.Addresses, want)
+	}
+	for i := range want {
+		if got.Addresses[i] != want[i] {
+			t.Errorf("Addresses[%d] = %q, want %q", i, got.Addresses[i], want[i])
+		}
+	}
+}
+
+// 只填 yaml addresses、不填 ES_HOST 时原样保留
+func TestApplyAddressesCSVEmpty(t *testing.T) {
+	cfg := Config{Addresses: []string{"http://es:9200"}}
+	if got := cfg.applyAddressesCSV(); len(got.Addresses) != 1 || got.Addresses[0] != "http://es:9200" {
+		t.Errorf("Addresses should stay untouched, got %v", got.Addresses)
+	}
+}
+
 func TestSyncAssemblesEntryAndWritesThrough(t *testing.T) {
 	fs := &fakeStore{}
 	l := newTestLogger(t, testLoggerConfig(), fs)

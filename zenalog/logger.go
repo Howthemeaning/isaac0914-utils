@@ -76,6 +76,29 @@ func (c Config) applyAddressesCSV() Config {
 	return c
 }
 
+// normalizeAddresses 补 scheme。ES 节点习惯写成 host:port（172.16.5.185:9200），
+// 而 client.do 是 addr+path 裸拼、不做任何补全，缺 scheme 时 http.Client 直接报
+// unsupported protocol scheme。已带 scheme 的原样保留；顺手去空白、丢空项
+// （逗号分隔的 env 很容易带出空串），全空则留空切片交给 validate 报「addresses required」。
+func (c Config) normalizeAddresses() Config {
+	if len(c.Addresses) == 0 {
+		return c
+	}
+	out := make([]string, 0, len(c.Addresses))
+	for _, addr := range c.Addresses {
+		addr = strings.TrimSpace(addr)
+		if addr == "" {
+			continue
+		}
+		if !strings.Contains(addr, "://") {
+			addr = "http://" + addr
+		}
+		out = append(out, addr)
+	}
+	c.Addresses = out
+	return c
+}
+
 // withDefaults 零值填默认
 func (c Config) withDefaults() Config {
 	if c.Timeout == 0 {
@@ -127,7 +150,7 @@ type Logger struct {
 // 与 Index 不同，额外比对目标 pattern 的 _mapping 与本地 AttrKeys，缺键记 warn
 // （不 fail——目标索引可能还没建；缺字段的索引在 attrs 筛选下会被静默排除）。
 func New(cfg Config) (*Logger, error) {
-	cfg = cfg.applyAddressesCSV()
+	cfg = cfg.applyAddressesCSV().normalizeAddresses()
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

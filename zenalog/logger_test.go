@@ -119,6 +119,51 @@ func TestApplyAddressesCSVEmpty(t *testing.T) {
 	}
 }
 
+// 补 scheme：ES 节点习惯写成 host:port，client.do 是 addr+path 裸拼，
+// 缺 scheme 会得到 unsupported protocol scheme
+func TestNormalizeAddresses(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"host:port 补 http", []string{"172.16.5.185:9200"}, []string{"http://172.16.5.185:9200"}},
+		{"多节点", []string{"10.0.0.1:9200", "10.0.0.2:9200"}, []string{"http://10.0.0.1:9200", "http://10.0.0.2:9200"}},
+		{"已带 http 不动", []string{"http://es:9200"}, []string{"http://es:9200"}},
+		{"已带 https 不动", []string{"https://es:9200"}, []string{"https://es:9200"}},
+		{"混写", []string{"https://a:9200", "b:9200"}, []string{"https://a:9200", "http://b:9200"}},
+		{"去空白", []string{" 172.16.5.185:9200 ", "\t10.0.0.2:9200"}, []string{"http://172.16.5.185:9200", "http://10.0.0.2:9200"}},
+		{"丢空项", []string{"a:9200", "", "  "}, []string{"http://a:9200"}},
+		{"全空 -> 空切片，交给 validate 报错", []string{"", " "}, []string{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := (Config{Addresses: c.in}).normalizeAddresses().Addresses
+			if len(got) != len(c.want) {
+				t.Fatalf("Addresses = %v, want %v", got, c.want)
+			}
+			for i := range c.want {
+				if got[i] != c.want[i] {
+					t.Errorf("Addresses[%d] = %q, want %q", i, got[i], c.want[i])
+				}
+			}
+		})
+	}
+}
+
+// ES_HOST 端到端：New 里 applyAddressesCSV 之后必须补 scheme，
+// 否则 EnsureIndex 直接 unsupported protocol scheme
+func TestApplyAddressesCSVThenNormalize(t *testing.T) {
+	cfg := (Config{AddressesCSV: "172.16.5.185:9200,172.16.5.217:9200"}).
+		applyAddressesCSV().normalizeAddresses()
+	want := []string{"http://172.16.5.185:9200", "http://172.16.5.217:9200"}
+	for i := range want {
+		if cfg.Addresses[i] != want[i] {
+			t.Errorf("Addresses[%d] = %q, want %q", i, cfg.Addresses[i], want[i])
+		}
+	}
+}
+
 func TestSyncAssemblesEntryAndWritesThrough(t *testing.T) {
 	fs := &fakeStore{}
 	l := newTestLogger(t, testLoggerConfig(), fs)

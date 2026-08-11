@@ -148,11 +148,11 @@ func TestEnsureIndexPutsTemplateFirst(t *testing.T) {
 	if !ok || len(patterns) != 2 || patterns[0] != "svc-activity-log" || patterns[1] != "svc-activity-log-*" {
 		t.Errorf("index_patterns should cover the index and its rollover pattern, got %v", tpl["index_patterns"])
 	}
-	// template 的 mapping 必须与建索引用的是同一份（typed，_doc 下带 properties）
-	if got := dig(t, tpl, "mappings", "_doc", "properties", "trace_id", "type"); got != "keyword" {
+	// template 的 mapping 必须与建索引用的是同一份（typeless，properties 直接挂 mappings 下）
+	if got := dig(t, tpl, "mappings", "properties", "trace_id", "type"); got != "keyword" {
 		t.Errorf("template trace_id type = %v, want keyword", got)
 	}
-	if got := dig(t, tpl, "mappings", "_doc", "properties", "attrs", "dynamic"); got != "strict" {
+	if got := dig(t, tpl, "mappings", "properties", "attrs", "dynamic"); got != "strict" {
 		t.Errorf("template attrs dynamic = %v, want strict", got)
 	}
 	if got := dig(t, tpl, "settings", "index.max_inner_result_window"); got == nil {
@@ -184,7 +184,7 @@ func TestEnsureIndexMappingConflictCarriesHint(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_settings":
 			_, _ = w.Write([]byte(`{"acknowledged":true}`))
-		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_mapping/_doc":
+		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_mapping":
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":{"reason":"mapper [changes.from] of different type, current_type [text], merged_type [keyword]"},"status":400}`))
 		default:
@@ -239,8 +239,8 @@ func TestEnsureIndexCreate(t *testing.T) {
 		t.Errorf("max_inner_result_window = %v, want 2000", got)
 	}
 
-	// typed mapping：_doc
-	props := dig(t, body, "mappings", "_doc", "properties").(map[string]any)
+	// typeless mapping：properties 直接挂 mappings 下
+	props := dig(t, body, "mappings", "properties").(map[string]any)
 	if got := dig(t, props, "timestamp", "type"); got != "date" {
 		t.Errorf("timestamp type = %v, want date", got)
 	}
@@ -281,7 +281,7 @@ func TestEnsureIndexCreate(t *testing.T) {
 	}
 
 	// 新建路径不应再发补 mapping/settings 的请求
-	if n := f.count(http.MethodPut, "/svc-activity-log/_mapping/_doc"); n != 0 {
+	if n := f.count(http.MethodPut, "/svc-activity-log/_mapping"); n != 0 {
 		t.Errorf("create path should not PUT _mapping, got %d", n)
 	}
 }
@@ -295,7 +295,7 @@ func TestEnsureIndexExistsBackfills(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_settings":
 			_, _ = w.Write([]byte(`{"acknowledged":true}`))
-		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_mapping/_doc":
+		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_mapping":
 			_, _ = w.Write([]byte(`{"acknowledged":true}`))
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
@@ -321,9 +321,9 @@ func TestEnsureIndexExistsBackfills(t *testing.T) {
 		t.Errorf("backfilled max_inner_result_window = %v, want 2000", got)
 	}
 	// mapping 补差集：全量 properties 幂等提交
-	mreq := f.find(http.MethodPut, "/svc-activity-log/_mapping/_doc")
+	mreq := f.find(http.MethodPut, "/svc-activity-log/_mapping")
 	if mreq == nil {
-		t.Fatal("expect PUT _mapping/_doc to backfill attrs keys")
+		t.Fatal("expect PUT _mapping to backfill attrs keys")
 	}
 	mbody := decodeBody(t, mreq)
 	if got := dig(t, mbody, "properties", "attrs", "properties", "customer", "type"); got != "text" {
@@ -343,7 +343,7 @@ func TestEnsureIndexMappingConflict(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_settings":
 			_, _ = w.Write([]byte(`{"acknowledged":true}`))
-		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_mapping/_doc":
+		case r.Method == http.MethodPut && r.URL.Path == "/svc-activity-log/_mapping":
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":{"type":"illegal_argument_exception","reason":"mapper [attrs.customer] cannot be changed from type [long] to [text]"},"status":400}`))
 		default:
@@ -405,9 +405,9 @@ func TestBulkBodyByteExact(t *testing.T) {
 	if req.contentType != "application/x-ndjson" {
 		t.Errorf("Content-Type = %q, want application/x-ndjson", req.contentType)
 	}
-	want := `{"index":{"_type":"_doc"}}
+	want := `{"index":{}}
 {"trace_id":"t1","timestamp":"2026-07-31T07:03:05.123Z","ts_nanos":1785481385123000000,"operator":"alice","resource_type":"vll","instance_id":"i-1","resource_path":"pop/sha","operation":"create vll","message":"created","diff":"bandwidth: 100 -> 200","changes":[{"field":"bandwidth","from":"100","to":"200"}],"status":"info","attrs":{"customer":"acme"}}
-{"index":{"_type":"_doc"}}
+{"index":{}}
 {"timestamp":"2026-07-31T07:03:05.124Z","ts_nanos":1,"operation":"login","status":"success"}
 `
 	if got := string(req.body); got != want {

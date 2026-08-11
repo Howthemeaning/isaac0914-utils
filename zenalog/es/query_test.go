@@ -33,7 +33,8 @@ func hasClause(arr []any, kind, field string, value any) bool {
 }
 
 func searchOKBody() string {
-	return `{"hits":{"total":42,"hits":[
+	// ES 7 的 hits.total 是对象 {value, relation}，不再是数字
+	return `{"hits":{"total":{"value":42,"relation":"eq"},"hits":[
 		{"_source":{"trace_id":"t1","timestamp":"2026-07-31T07:03:05.123Z","ts_nanos":5,"operation":"create vll","status":"info"}}
 	]}}`
 }
@@ -87,8 +88,10 @@ func TestSearchRequestShape(t *testing.T) {
 	if got := body["size"]; got != float64(20) {
 		t.Errorf("size = %v, want 20", got)
 	}
-	if _, has := body["track_total_hits"]; has {
-		t.Error("must not send track_total_hits on ES 6")
+	// ES 7 不发 track_total_hits 时 total 超 10000 只回 gte 近似值，分页页数会算错，
+	// 而 flat 模式的契约是 Total 恒精确，所以必须显式发
+	if got := body["track_total_hits"]; got != true {
+		t.Errorf("track_total_hits = %v, want true（ES 7 下不发则 total 被 10000 截断）", got)
 	}
 	// 排序：timestamp desc + ts_nanos tiebreaker
 	sorts := body["sort"].([]any)
@@ -207,7 +210,7 @@ func TestSearchHTTPError(t *testing.T) {
 
 func TestAggregateByTraceShape(t *testing.T) {
 	f := newFakeES(t, func(w http.ResponseWriter, r *http.Request, _ []byte) {
-		_, _ = w.Write([]byte(`{"hits":{"total":5,"hits":[]},"aggregations":{"by_trace":{"buckets":[
+		_, _ = w.Write([]byte(`{"hits":{"total":{"value":5,"relation":"eq"},"hits":[]},"aggregations":{"by_trace":{"buckets":[
 			{"key":"t2","doc_count":2,"first_ts":{"value":1785481385123.0},"logs":{"hits":{"hits":[
 				{"_source":{"trace_id":"t2","timestamp":"2026-07-31T07:03:05.123Z","ts_nanos":1,"operation":"create vll","status":"info"}},
 				{"_source":{"trace_id":"t2","timestamp":"2026-07-31T07:03:06.000Z","ts_nanos":2,"operation":"create vll","status":"success"}}
@@ -271,9 +274,9 @@ func TestCheckSearchMapping(t *testing.T) {
 	f := newFakeES(t, func(w http.ResponseWriter, r *http.Request, _ []byte) {
 		if r.Method == http.MethodGet && r.URL.Path == "/svc-*/_mapping" {
 			_, _ = w.Write([]byte(`{
-				"svc-a-activity-log":{"mappings":{"_doc":{"properties":{"attrs":{"dynamic":"strict","properties":{"customer":{"type":"text"}}}}}}},
-				"svc-b-activity-log":{"mappings":{"_doc":{"properties":{"attrs":{"dynamic":"strict","properties":{"tenant":{"type":"text"}}}}}}},
-				"svc-c-activity-log":{"mappings":{"_doc":{"properties":{"operation":{"type":"keyword"}}}}}
+				"svc-a-activity-log":{"mappings":{"properties":{"attrs":{"dynamic":"strict","properties":{"customer":{"type":"text"}}}}}},
+				"svc-b-activity-log":{"mappings":{"properties":{"attrs":{"dynamic":"strict","properties":{"tenant":{"type":"text"}}}}}},
+				"svc-c-activity-log":{"mappings":{"properties":{"operation":{"type":"keyword"}}}}
 			}`))
 			return
 		}

@@ -145,8 +145,9 @@ func (q *Query) search(ctx context.Context, payload map[string]any) ([]byte, err
 }
 
 // Search flat 查询：bool 过滤 + from/size 按行分页 + ts_nanos tiebreaker，返回
-// 当前页与精确总数（ES 6 的 hits.total 恒精确，不发 track_total_hits——ES 6 收到
-// 未知参数解析报错）。
+// 当前页与精确总数。ES 7 起 hits.total 是对象 {value, relation}，且默认只统计到
+// 10000 就返回 relation="gte" 的近似值——平铺列表要按 total 算页数，近似值会把页数
+// 算错，所以显式发 track_total_hits=true 换回精确计数。
 func (q *Query) Search(ctx context.Context, req QueryRequest) ([]Doc, int64, error) {
 	bq, err := q.boolQuery(req)
 	if err != nil {
@@ -159,15 +160,19 @@ func (q *Query) Search(ctx context.Context, req QueryRequest) ([]Doc, int64, err
 			map[string]any{"timestamp": "desc"},
 			map[string]any{"ts_nanos": "desc"},
 		},
-		"query": bq,
+		"track_total_hits": true,
+		"query":            bq,
 	})
 	if err != nil {
 		return nil, 0, err
 	}
 	var resp struct {
 		Hits struct {
-			Total int64 `json:"total"`
-			Hits  []struct {
+			Total struct {
+				Value    int64  `json:"value"`
+				Relation string `json:"relation"` // eq = 精确，gte = 被截断
+			} `json:"total"`
+			Hits []struct {
 				Source Doc `json:"_source"`
 			} `json:"hits"`
 		} `json:"hits"`
@@ -179,7 +184,7 @@ func (q *Query) Search(ctx context.Context, req QueryRequest) ([]Doc, int64, err
 	for _, h := range resp.Hits.Hits {
 		docs = append(docs, h.Source)
 	}
-	return docs, resp.Hits.Total, nil
+	return docs, resp.Hits.Total.Value, nil
 }
 
 // AggregateByTrace by-trace 查询：terms 按 trace_id 分组 + top_hits 取组内明细
@@ -269,9 +274,9 @@ func (q *Query) CheckSearchMapping(ctx context.Context) (map[string][]string, er
 	if status/100 != 2 {
 		return nil, fmt.Errorf("es: get mapping %s: http %d: %s", q.searchIndex, status, snippet(respBody))
 	}
-	// {index: {mappings: {<type>: {properties: {attrs: {properties: {key: ...}}}}}}}
+	// typeless（ES 7+）：{index: {mappings: {properties: {attrs: {properties: {key: ...}}}}}}
 	var resp map[string]struct {
-		Mappings map[string]struct {
+		Mappings struct {
 			Properties map[string]struct {
 				Properties map[string]json.RawMessage `json:"properties"`
 			} `json:"properties"`
@@ -283,11 +288,9 @@ func (q *Query) CheckSearchMapping(ctx context.Context) (map[string][]string, er
 	result := map[string][]string{}
 	for index, m := range resp {
 		present := map[string]bool{}
-		for _, typ := range m.Mappings { // ES 6 typed mapping，单 type 但名字不定
-			if attrs, ok := typ.Properties["attrs"]; ok {
-				for key := range attrs.Properties {
-					present[key] = true
-				}
+		if attrs, ok := m.Mappings.Properties["attrs"]; ok {
+			for key := range attrs.Properties {
+				present[key] = true
 			}
 		}
 		var missing []string

@@ -101,8 +101,8 @@ v1 设计时暂无使用方，查询侧完全按 zrbiz 的 traceId 时间线形�
 ### 依赖取舍
 
 **零新增第三方依赖。** ES 通信用 stdlib `net/http` + `encoding/json`；gin handler
-用的 gin 和 `ginx` 是模块既有依赖。目标是公司 ES 6 集群（见第 9 节），Bulk/Search
-是稳定老接口，typed 线格式细节全部收敛在 es 包内，裸调的维护风险可控。
+用的 gin 和 `ginx` 是模块既有依赖。目标是公司 ES 7 集群（见第 9 节第 2 条的版本更正），
+Bulk/Search 是稳定老接口，typeless 线格式细节全部收敛在 es 包内，裸调的维护风险可控。
 
 ## 4. 架构
 
@@ -149,7 +149,8 @@ goroutine。Close 后再调 Info/InfoFinish（含同步）返回 `ErrClosed`。
 flat 模式（默认）：
 GinHandler / logger.List(ctx, req)
   → es.Query.Search → POST /{searchIndex}/_search
-  → bool 过滤 + from/size 按行分页，hits.total 取总数（ES 6 恒精确）
+  → bool 过滤 + from/size 按行分页，hits.total.value 取总数
+    （ES 7 的 total 是 {value, relation} 对象；发 track_total_hits=true 保证精确）
   → []Entry + Total
 
 by-trace 模式：
@@ -417,13 +418,13 @@ mappings：
 **mapping 是要长的，`EnsureIndex` 不能只做 "if not exists"。** `AttrKeys` 增加时索引
 通常早已存在，跳过补齐就会让 `dynamic: strict` 拒收所有带新 key 的文档，而 Bulk 的
 HTTP 200 会把这件事藏起来（见第 6 节）。所以索引已存在时也要
-`PUT /{index}/_mapping/{type}` 补差集，类型冲突则 `New` 失败。见 6.1 第 10 条。
+`PUT /{index}/_mapping` 补差集，类型冲突则 `New` 失败。见 6.1 第 10 条。
 
 写入走 Bulk API：
 
 ```
 POST /{index}/_bulk
-{"index":{"_type":"_doc"}}
+{"index":{}}
 {"trace_id":"...","timestamp":"2026-07-31T07:03:05.123Z","ts_nanos":1785481385123456789,"operation":"create vll","status":"info","attrs":{"customer":"..."},...}
 ```
 
@@ -561,7 +562,7 @@ GOTOOLCHAIN=local go build ./... && GOTOOLCHAIN=local go vet ./... && GOTOOLCHAI
 | `zenalog`（diff） | 表驱动：基本类型变更、嵌套结构体、指针 nil↔非 nil、**slice 编辑距离对齐（顶部插入只报一条新增、中间删除、元素修改、重排）**、超长 slice 退化、`zenalog:"-"` 忽略、`zenalog:"mask"` 脱敏、循环引用不炸 |
 | `zenalog`（Logger） | fake Store 验证：Entry 装配（Option 各字段含 Attr/Changes）、ctx 注入 operator/traceID、traceID 缺省回落 request id、队列满丢新+计数、**Sync 绕过队列直写且错误透传**、**未登记的 attr key 返回 error**、Close 冲刷且幂等、Close 后（含 Sync）返回 ErrClosed |
 | `zenalog`（查询+handler） | ListRequest 默认值与上限、**flat/by-trace 两种模式的结果填充**、gin handler 参数解析（含 mode、attrs 条件、prefix）、错误走 ginx 响应壳 |
-| `zenalog/es` | `httptest.Server` 模拟 ES 6：索引不存在时建（**settings 带 number_of_shards=1 与 max_inner_result_window=2000**）、**已存在时不重复建但仍 `PUT _mapping` 补 AttrKeys 差集 + `PUT _settings` 补 max_inner_result_window**、**补 mapping 遇类型冲突返回 error**、mapping 含 attrs 白名单（dynamic: strict、显式 keyword ignore_above 256、typed 形式）与 changes 三字段的 ignore_above、Bulk 请求体 ndjson 逐字节正确（action 带 `_type: "_doc"`、**timestamp 为 UTC 毫秒串、ts_nanos 在场**）、flat 查询 JSON（from/size/attrs .keyword 子字段/prefix、**sort 带 ts_nanos tiebreaker**、**无 track_total_hits**）与精确 total 解析、聚合查询 JSON 结构（terms/top_hits 组内 sort 带 tiebreaker/bucket_sort/排除条件）、SearchIndex 通配出现在请求 URL、**CheckSearchMapping 缺键索引被点名、pattern 无匹配返回空不报错** |
+| `zenalog/es` | `httptest.Server` 模拟 ES 7：索引不存在时建（**settings 带 number_of_shards=1 与 max_inner_result_window=2000**）、**已存在时不重复建但仍 `PUT _mapping` 补 AttrKeys 差集 + `PUT _settings` 补 max_inner_result_window**、**补 mapping 遇类型冲突返回 error**、mapping 含 attrs 白名单（dynamic: strict、显式 keyword ignore_above 256、typeless 形式）与 changes 三字段的 ignore_above、Bulk 请求体 ndjson 逐字节正确（action 为空对象 `{"index":{}}`、**timestamp 为 UTC 毫秒串、ts_nanos 在场**）、flat 查询 JSON（from/size/attrs .keyword 子字段/prefix、**sort 带 ts_nanos tiebreaker**、**无 track_total_hits**）与精确 total 解析、聚合查询 JSON 结构（terms/top_hits 组内 sort 带 tiebreaker/bucket_sort/排除条件）、SearchIndex 通配出现在请求 URL、**CheckSearchMapping 缺键索引被点名、pattern 无匹配返回空不报错** |
 | `zenalog/es`（失败路径） | **HTTP 非 2xx 返回 error**；**HTTP 200 + `"errors": true` 的条目级失败也返回 error**（含失败条数），且 `strict_dynamic_mapping_exception` 的 reason 出现在日志里——这条是本轮新增的重点，只看状态码就会把丢文档当成写成功；混合响应（部分成功部分被拒）断言 error 里带的是被拒条数而不是全批 |
 
 测试断言真实行为：Bulk 那条断言服务器收到的 ndjson 逐字节正确，不断言"没报错"；
@@ -590,13 +591,20 @@ Close 那条断言缓冲队列里的日志真的被冲刷出去了；slice diff 
 
 1. **CMI「操作日志」定位（产品拍板）**：可丢的活动日志 vs 不可丢的审计日志。
    决定第 8 节落盘兜底做不做，以及审批写 ES 失败时业务侧的行为。
-2. ~~ES 发行版与版本~~ **已确认：ES 6**（用户确认；旁证：starter 的
-   `@Document(indexName = "activity_log", type = "_doc")` 是 spring-data-elasticsearch
-   3.x / ES 6 时代的写法，4.0 起该属性废弃）。对设计的实际影响已落到正文：
-   不发 `track_total_hits`（ES 6 解析报错）、`Total` 恒精确；attrs 用 object +
-   白名单，不依赖发行版特性；线格式 typed——bulk action 带 `_type: "_doc"`、
-   mapping 用 typed 形式、search 走 `/{index}/_search`（6.x 允许不带 type），
-   全部收敛在 es 包内。
+2. ~~ES 发行版与版本~~ ~~已确认：ES 6~~ → **实测更正：目标集群是 ES 7**
+   （2026-08-11，cmi-server 接测试环境 ES `172.16.5.185:9200` 时暴露）。
+   当初判定 ES 6 的唯一依据是 starter 里
+   `@Document(indexName = "activity_log", type = "_doc")` 这个旁证，属于误判——
+   它只说明那段 starter 代码写于 spring-data-elasticsearch 3.x 时代，
+   不代表目标集群的版本。真实集群直接拒收 typed mapping：
+   `illegal_argument_exception: The mapping definition cannot be nested under
+   a type [_doc] unless include_type_name is set to true`。
+   线格式因此改为 **typeless**：bulk action 为空对象 `{"index":{}}`、
+   mapping 的 properties 直接挂在 `mappings` 下、`PUT /{index}/_mapping` 不带 type、
+   读 mapping 时也少一层 type；search 仍走 `/{index}/_search`。全部收敛在 es 包内。
+   没有采用 `include_type_name=true` 这个兼容开关——它在 ES 8 已被移除，用了等于埋一次返工。
+   `track_total_hits` 维持不发、`Total` 恒精确（ES 7 支持该参数，但不发不影响正确性，
+   保持现状以免改变既有语义）；attrs 仍用 object + 白名单，不依赖发行版特性。
 3. **CMI 登录日志整合路径（CMI 架构决策）**：让 Java iam 的登录日志和 cmi-server
    的业务日志进同一个列表（`✓N3`），候选：
    a) iam 侧适配写 zenalog 兼容 mapping——跨团队改 starter 用法，重，且让 iam

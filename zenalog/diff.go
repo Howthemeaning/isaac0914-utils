@@ -1,4 +1,4 @@
-// Package zenalog 活动日志库：手动埋点写 ES 6，flat / by-trace 双模式查询。
+// Package zenalog 活动日志库：手动埋点写 ES（typeless 线格式，ES 7+），flat / by-trace 双模式查询。
 // 设计见 doc/zenalog/design.md。
 package zenalog
 

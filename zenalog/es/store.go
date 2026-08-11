@@ -10,7 +10,7 @@ import (
 	"net/http"
 )
 
-// maxInnerResultWindow top_hits 组内明细的 from+size 上限。ES 6 默认 100
+// maxInnerResultWindow top_hits 组内明细的 from+size 上限。ES 默认 100
 // （IndexScope + Dynamic），不抬 by-trace 的 top_hits size 2000 一查就被拒。
 const maxInnerResultWindow = 2000
 
@@ -37,7 +37,7 @@ func NewStore(cfg Config) (*Store, error) {
 }
 
 // EnsureIndex 索引不存在则建（PUT + settings + mappings）；已存在也要补——
-// mapping：PUT /{index}/_mapping/_doc 幂等提交全量 properties，把 AttrKeys 缺的
+// mapping：PUT /{index}/_mapping 幂等提交全量 properties，把 AttrKeys 缺的
 // attrs 子字段补进去（AttrKeys 是会增长的，见设计 6.1 第 10 条）；
 // settings：PUT /{index}/_settings 补 index.max_inner_result_window（动态设置）。
 // 类型冲突 ES 会拒，返回 error 让调用方在启动期失败。number_of_shards 是静态
@@ -74,9 +74,11 @@ func (s *Store) ensureTemplate(ctx context.Context) error {
 			"number_of_shards":              1,
 			"index.max_inner_result_window": maxInnerResultWindow,
 		},
-		"mappings": map[string]any{
-			"_doc": map[string]any{"properties": properties(s.attrKeys)},
-		},
+		// typeless：ES 7 起移除了 mapping type，properties 直接挂 mappings 下。
+		// 套 "_doc" 会被 ES 7 拒：illegal_argument_exception「cannot be nested under
+		// a type [_doc] unless include_type_name is set to true」，而那个兼容开关在
+		// ES 8 已删除，所以不走它
+		"mappings": map[string]any{"properties": properties(s.attrKeys)},
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -92,16 +94,18 @@ func (s *Store) ensureTemplate(ctx context.Context) error {
 	return nil
 }
 
-// create 建索引：settings + typed mapping 一次带全
+// create 建索引：settings + mapping 一次带全
 func (s *Store) create(ctx context.Context) error {
 	payload := map[string]any{
 		"settings": map[string]any{
 			"number_of_shards":              1,
 			"index.max_inner_result_window": maxInnerResultWindow,
 		},
-		"mappings": map[string]any{
-			"_doc": map[string]any{"properties": properties(s.attrKeys)},
-		},
+		// typeless：ES 7 起移除了 mapping type，properties 直接挂 mappings 下。
+		// 套 "_doc" 会被 ES 7 拒：illegal_argument_exception「cannot be nested under
+		// a type [_doc] unless include_type_name is set to true」，而那个兼容开关在
+		// ES 8 已删除，所以不走它
+		"mappings": map[string]any{"properties": properties(s.attrKeys)},
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -135,7 +139,7 @@ func (s *Store) backfill(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("es: marshal mapping: %w", err)
 	}
-	status, respBody, err = s.c.do(ctx, http.MethodPut, "/"+s.index+"/_mapping/_doc", mapping, "application/json")
+	status, respBody, err = s.c.do(ctx, http.MethodPut, "/"+s.index+"/_mapping", mapping, "application/json")
 	if err != nil {
 		return err
 	}
@@ -212,7 +216,7 @@ func (s *Store) Bulk(ctx context.Context, docs []Doc) error {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	for i := range docs {
-		buf.WriteString(`{"index":{"_type":"_doc"}}` + "\n")
+		buf.WriteString(`{"index":{}}` + "\n")
 		if err := enc.Encode(&docs[i]); err != nil { // Encode 自带行尾 \n，正好是 ndjson
 			return fmt.Errorf("es: marshal doc %d: %w", i, err)
 		}

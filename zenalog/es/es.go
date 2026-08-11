@@ -1,6 +1,6 @@
 // Package es 封装 zenalog 与 Elasticsearch 6 的通信：Doc 线格式、Store（建索引
 // 与批量写入）、Query（flat 与聚合查询）。只用 stdlib，不 import 主包。
-// typed 线格式（_doc）、settings、mapping 细节全部收敛在本包内。
+// 线格式（typeless mapping，ES 7+）、settings、mapping 细节全部收敛在本包内。
 package es
 
 import "time"

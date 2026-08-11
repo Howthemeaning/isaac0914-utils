@@ -72,7 +72,7 @@ type Bucket struct {
 // flat 模式填 Entries/Total，by-trace 模式填 Buckets。
 type ListResult struct {
 	Entries []Entry  `json:"entries"`           // flat 模式：当前页的行
-	Total   int64    `json:"total"`             // flat 模式：命中总数（ES 6 恒精确）
+	Total   int64    `json:"total"`             // flat 模式：命中总数（发 track_total_hits 保证精确）
 	Buckets []Bucket `json:"buckets,omitempty"` // by-trace 模式：当前页的组
 }
 
